@@ -1,12 +1,10 @@
 import os
 import operator
 from collections import Counter
+from argparse import ArgumentParser
 import sys
 
-
-all_files = []
 file_counter = Counter()
-file_dic = {}
 
 
 def remove_zfill(size):
@@ -14,19 +12,21 @@ def remove_zfill(size):
     if not size.startswith('0'):
         return size
     for char in size:
+        if len(size) == 1:
+            return size
         if char == '0':
             return remove_zfill(size[1:])
 
 
-def count_files(fext, size):
+def count_files(file_ext, size, file_dic):
     '''Count files with the same extension, sum its size then store both 
     count and size in a list and store the list in a dictionary 
     with the key of file extension.'''
-    if fext not in file_dic:
-        file_dic[fext] = [1, size]
+    if file_ext not in file_dic:
+        file_dic[file_ext] = [1, size]
     else:
-        file_dic[fext][0] += 1
-        file_dic[fext][1] += size
+        file_dic[file_ext][0] += 1
+        file_dic[file_ext][1] += size
 
 
 def format_size(size):
@@ -50,11 +50,11 @@ def format_size(size):
         return size.rjust(9)
 
 
-def record_type_n_size(file):
+def record_type_n_size(file, file_dic):
     '''Record/Count the different file types. Calls count_files function'''
     size = os.path.getsize(file)
     _, fext = os.path.splitext(file)
-    count_files(fext, size)
+    count_files(fext, size, file_dic)
 
 
 def match(file, ext):
@@ -63,25 +63,39 @@ def match(file, ext):
     return os.path.splitext(file)[1][1:] == ext
 
 
-def main(folder, out_file):
-    with open(out_file, 'w', encoding='utf8') as text_file:
-        for paths, dirs, files in os.walk(folder):
-            for file in files:
-                file_ = os.path.join(paths,file)
-                if not os.path.isfile(file_):
-                    continue
-                file_size = str((os.path.getsize(file_)))
-                all_files.append((file_size.zfill(12), file_))
+def file_gen(folder_path):
+    '''Generate all files complete with each path in the given folder and its subfolders.'''
+    for path, _, files, in os.walk(folder_path):
+        for file in files:
+            file_ = os.path.join(path, file)
+            if not os.path.isfile(file_):
+                continue
+            yield file_
 
-        all_files.sort(reverse=True)
 
+def main(folder, file_ext, del_flag, out_file):
+
+    file_dic = {}
+    all_files = []
+
+
+    for file in file_gen(folder):
+        if file_ext:
+            if not match(file, file_ext):
+                continue
+        file_size = str((os.path.getsize(file)))
+        all_files.append((file_size.zfill(12), file))
+
+    all_files.sort(reverse=True)
+
+    with open(os.path.join(folder, out_file), 'w', encoding='utf8') as text_file:
         text_file.write('List of all files inside folders and its subfolders in "{}".\n\n'.upper().format(folder))
 
         for size, file in all_files:
             size = format_size(size)
             line = '{} - {}\n'.format(size, file)
             text_file.write(line)
-            record_type_n_size(file)
+            record_type_n_size(file, file_dic)
 
         summary = '*********** SUMMARY ***********'.center(53)
         text_file.write('\n\n' + summary + '\n\n')
@@ -91,7 +105,7 @@ def main(folder, out_file):
         file_ = 'File'.center(17).upper()
         text_file.write(t_size + '|' + n_files + '|' + file_ + '\n')
 
-        file_dic = dict(sorted(file_dic.items(), key=operator.itemgetter(1), reverse=True))
+        file_dic2 = dict(sorted(file_dic.items(), key=operator.itemgetter(1), reverse=True))
             
         for file_type, value in file_dic.items():
             num, size = value
@@ -99,9 +113,36 @@ def main(folder, out_file):
             file_type = file_type.center(17)
             num = str(num).center(17)
             text_file.write(size + '|' + num + '|' + file_type + '\n')
+    
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], 'outputs//argv.txt')
+
+    my_parser = ArgumentParser(prog='Search files',
+                               usage='Search files in a given directory. May choose specific filetypes.',
+                               description='Command Line Application searches a given directory and list and' \
+                               'summarize then write on a text file.',)
+
+    my_parser.add_argument('path', type=str, help='folder to be search of files')
+    my_parser.add_argument('-ext', '--file_extension', type=str,
+                                                   default=None,
+                                                   help='optional file extension that will be search')
+
+    my_parser.add_argument('-d', '--delete', type=bool,
+                                         default=False,
+                                         help='delete all files with the specified file extension')
     
+    my_parser.add_argument('-o', '--output', type=str,
+                                            default='output.txt',
+                                            help= 'output file where reports will be saved')
+    
+    # my_parser.add_argument('-r', '--report', type=bool,
+    #                                         default=False,
+    #                                         help= 'Reports every single file types and its size searched and prints summary')
+
+    args = my_parser.parse_args()
+
+    
+    main(args.path, args.file_extension, args.delete, args.output)
+
     print('End')
